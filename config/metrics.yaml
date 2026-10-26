@@ -1,0 +1,119 @@
+# Metric registry: one definition per metric. The dashboard builds every tile from these entries,
+# so the dashboard and the registry SQL cannot disagree.
+#   from:     view the metric reads
+#   where:    base condition (the denominator population)
+#   expr:     aggregate expression returning the metric value
+#   date_col: column the date filter and weekly series use
+metrics:
+  auth_rate:
+    label: Authorisation rate
+    definition: Authorised payments divided by initiated payments, excluding retries
+    from: v_payments
+    where: NOT is_retry
+    expr: avg(CASE WHEN reached_auth THEN 1.0 ELSE 0.0 END)
+    date_col: created_at
+    format: pct
+    higher_is_better: true
+    caveats: Retries are excluded so a customer trying twice is not counted as two attempts.
+
+  success_rate:
+    label: Success rate (end to end)
+    definition: Settled payments divided by initiated payments, with a settled retry counted against its original
+    from: v_originals
+    where: "TRUE"
+    expr: avg(CASE WHEN ever_settled THEN 1.0 ELSE 0.0 END)
+    date_col: created_at
+    format: pct
+    higher_is_better: true
+    caveats: A payment that settled and was later returned or disputed still counts as settled here.
+
+  decline_rate:
+    label: Decline rate
+    definition: Declined payments divided by initiated payments, excluding retries
+    from: v_payments
+    where: NOT is_retry
+    expr: avg(CASE WHEN is_declined THEN 1.0 ELSE 0.0 END)
+    date_col: created_at
+    format: pct
+    higher_is_better: false
+    caveats: Broken down by reason group in the decline view; groups sum to this rate.
+
+  retry_recovery_rate:
+    label: Retry recovery rate
+    definition: Retried payments that settled, divided by retried payments
+    from: v_payments
+    where: is_retry
+    expr: avg(CASE WHEN reached_settled THEN 1.0 ELSE 0.0 END)
+    date_col: created_at
+    format: pct
+    higher_is_better: true
+    caveats: Only customer-initiated retries are modelled; one retry per declined payment at most.
+
+  time_to_settle_p50:
+    label: Time to settle (median)
+    definition: Median hours from initiation to settlement
+    from: v_payments
+    where: reached_settled
+    expr: quantile_cont(settle_hours, 0.5)
+    date_col: created_at
+    format: hours
+    higher_is_better: false
+    caveats: Blends rails with very different clocks; read it by rail.
+
+  time_to_settle_p95:
+    label: Time to settle (p95)
+    definition: 95th percentile hours from initiation to settlement
+    from: v_payments
+    where: reached_settled
+    expr: quantile_cont(settle_hours, 0.95)
+    date_col: created_at
+    format: hours
+    higher_is_better: false
+    caveats: Blends rails with very different clocks; read it by rail.
+
+  return_rate:
+    label: Return rate
+    definition: Returned payments divided by settled payments
+    from: v_payments
+    where: reached_settled
+    expr: avg(CASE WHEN is_returned THEN 1.0 ELSE 0.0 END)
+    date_col: created_at
+    format: pct
+    higher_is_better: false
+    caveats: Returns can arrive up to ten days after settlement, so the latest week is understated.
+
+  dispute_rate:
+    label: Dispute rate (card)
+    definition: Disputed payments divided by settled card payments
+    from: v_payments
+    where: reached_settled AND rail = 'card'
+    expr: avg(CASE WHEN is_disputed THEN 1.0 ELSE 0.0 END)
+    date_col: created_at
+    format: pct
+    higher_is_better: false
+    caveats: Disputes arrive up to forty days later; recent weeks are immature.
+
+  cost_per_settled:
+    label: Cost per settled payment
+    definition: Fees and processing cost divided by settled payments
+    from: v_payments
+    where: "TRUE"
+    expr: sum(cost_gbp) / nullif(sum(CASE WHEN reached_settled THEN 1 ELSE 0 END), 0)
+    date_col: created_at
+    format: gbp
+    higher_is_better: false
+    caveats: Cost figures are config assumptions, not real scheme or processor prices.
+
+  value_at_risk:
+    label: Value at risk from breaks
+    definition: Sum of amounts in open reconciliation breaks
+    from: v_open_breaks
+    where: "TRUE"
+    expr: coalesce(sum(amount_at_risk), 0)
+    date_col: created_at
+    format: gbp0
+    higher_is_better: false
+    caveats: Orphan scheme records have no segment, so a segment filter excludes them.
+
+headline: [auth_rate, success_rate, decline_rate, retry_recovery_rate, time_to_settle_p50, time_to_settle_p95,
+           return_rate, dispute_rate, cost_per_settled, value_at_risk]

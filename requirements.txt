@@ -1,0 +1,8 @@
+duckdb>=1.1
+pandas>=2.2
+numpy>=1.26
+pyyaml>=6.0
+streamlit>=1.40
+plotly>=5.22
+pytest>=8.0
+anthropic>=0.40  # optional: only used to reword notes when an API key is set

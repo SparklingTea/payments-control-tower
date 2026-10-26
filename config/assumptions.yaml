@@ -1,0 +1,160 @@
+# Every number in this file is an ASSUMPTION for a synthetic payments book.
+# None of these are real industry figures or any company's real performance.
+
+generator:
+  seed: 42
+  n_customers: 20000
+  n_payments: 290000          # original payments; customer retries and fraud bursts add ~3% on top
+  start_date: "2026-01-01"
+  end_date: "2026-06-30"
+  recon_as_of_days_after_end: 7
+  unmapped_code_rate: 0.0008  # share of declines/failures given a code missing from reason_codes.yaml
+
+segments:
+  retail:   {share: 0.75, volume_weight: 1.0}
+  premium:  {share: 0.15, volume_weight: 1.6}
+  business: {share: 0.10, volume_weight: 3.0}
+
+# Rail mix differs by segment: businesses pay suppliers and payroll by Bacs, consumers use cards.
+rail_mix:
+  retail:   {card: 0.62, faster_payments: 0.28, bacs_credit: 0.02, direct_debit: 0.08}
+  premium:  {card: 0.60, faster_payments: 0.30, bacs_credit: 0.03, direct_debit: 0.07}
+  business: {card: 0.22, faster_payments: 0.36, bacs_credit: 0.34, direct_debit: 0.08}
+
+regions: [London, South East, South West, Midlands, North West, North East, Yorkshire, Scotland, Wales, Northern Ireland]
+risk_bands: {low: 0.6, medium: 0.3, high: 0.1}
+new_customer_share: 0.12      # customers who open their account during the six months
+
+rails:
+  card:
+    scheme_code: CARD
+    auth_rate: 0.92
+    failure_rate: 0.004
+    settle_hours: {mean: 30, sd: 5}
+    cost_gbp: 0.18            # scheme fee + processing cost per settled payment
+    decline_cost_gbp: 0.02    # authorisation cost on a declined payment
+    return_rate: 0.004
+    dispute_rate: 0.003
+    amount: {median: 32, sigma: 1.0}
+    payee_types: {merchant: 1.0}
+    categories: {groceries: 0.28, retail: 0.20, dining: 0.15, entertainment: 0.12, travel: 0.10, electronics: 0.10, gaming: 0.05}
+    decline_codes: {D51: 0.42, D05: 0.17, D54: 0.12, D14: 0.09, D91: 0.10, D68: 0.10}
+    failure_codes: {F01: 0.7, F09: 0.3}
+    return_codes: {R10: 1.0}
+    fraud_base_rate: 0.0035
+  faster_payments:
+    scheme_code: FPS
+    auth_rate: 0.965
+    failure_rate: 0.006
+    settle_hours: {mean: 0.05, sd: 0.02}
+    cost_gbp: 0.06
+    decline_cost_gbp: 0.01
+    return_rate: 0.002
+    dispute_rate: 0.0
+    amount: {median: 110, sigma: 1.1}
+    payee_types: {existing_payee: 0.8, new_payee: 0.2}
+    categories: {transfers: 0.60, bills: 0.20, rent: 0.10, services: 0.10}
+    decline_codes: {D51: 0.45, D14: 0.25, D91: 0.10, D68: 0.05, D05: 0.15}
+    failure_codes: {F01: 0.5, F02: 0.5}
+    return_codes: {R02: 0.6, R10: 0.4}
+    fraud_base_rate: 0.0045
+  bacs_credit:
+    scheme_code: BACS
+    auth_rate: 0.985
+    failure_rate: 0.01
+    settle_hours: {mean: 50, sd: 3}
+    cost_gbp: 0.03
+    decline_cost_gbp: 0.0
+    return_rate: 0.003
+    dispute_rate: 0.0
+    amount: {median: 650, sigma: 1.0}
+    payee_types: {existing_payee: 0.9, new_payee: 0.1}
+    categories: {payroll: 0.40, suppliers: 0.40, rent: 0.20}
+    decline_codes: {D51: 0.50, D14: 0.30, D05: 0.20}
+    failure_codes: {F02: 0.7, F01: 0.3}
+    return_codes: {R02: 0.7, R10: 0.3}
+    fraud_base_rate: 0.0006
+  direct_debit:
+    scheme_code: DD
+    auth_rate: 0.99
+    failure_rate: 0.035
+    settle_hours: {mean: 72, sd: 4}
+    cost_gbp: 0.04
+    decline_cost_gbp: 0.0
+    return_rate: 0.01
+    dispute_rate: 0.0
+    amount: {median: 45, sigma: 0.8}
+    payee_types: {biller: 1.0}
+    categories: {utilities: 0.50, subscriptions: 0.30, insurance: 0.20}
+    decline_codes: {D14: 0.6, D05: 0.4}
+    failure_codes: {F03: 0.85, F09: 0.15}
+    return_codes: {R01: 0.3, R10: 0.7}
+    fraud_base_rate: 0.0003
+
+customer_fees:               # fee charged to the customer, posted to fee income
+  business: {faster_payments: 0.25, bacs_credit: 0.15}
+
+retries:
+  retry_hard_declines: false # hard declines (risk rule) are not retried by default
+  probability: {technical: 0.65, insufficient_funds: 0.30, invalid_details: 0.40, other: 0.30, risk_rule: 0.20, unmapped: 0.30}
+  success: {technical: 0.88, insufficient_funds: 0.35, invalid_details: 0.55, other: 0.50, risk_rule: 0.30, unmapped: 0.50}
+  delay_minutes: {min: 1, max: 60}
+
+fraud:
+  amount_coef: 0.55          # logit uplift per unit of log-amount above the rail median
+  new_account_coef: 1.4      # account younger than 30 days
+  new_payee_coef: 1.1
+  high_risk_band_coef: 0.5
+  burst_share: 0.3           # share of card/FPS fraud that comes with two quick follow-on fraud payments
+  chargeback_rate: 0.85      # settled card fraud that ends in a dispute and write-off
+  score:                     # latent = intercept + signal*is_fraud + feature terms + noise; score = sigmoid(latent)
+    intercept: -3.2
+    signal: 2.9
+    feature_weight: 0.45
+    noise_sd: 1.0
+
+risk:
+  current_threshold: 0.60    # threshold the (synthetic) business runs today
+  grid_step: 0.005
+  fraud_loss_extra_gbp: 15   # chargeback fee added to the payment amount when fraud gets through
+  false_decline_cost_gbp: 12 # lost margin and goodwill per genuine payment blocked
+  review_cost_gbp: 4         # manual review cost per flagged payment (review mode only)
+  default_mode: decline      # decline: c_r = 0; review: c_r = review_cost_gbp
+  sensitivity_change: 0.5    # +/- 50% on false-decline cost and fraud loss
+  sensitivity_margin: 0.05   # flag if the optimal threshold moves by more than this
+  new_account_days: 90       # segment split for the one-threshold-fits-all question
+  rules:
+    new_payee_high_amount_gbp: 500
+    burst_count: 3
+    burst_window_minutes: 10
+    new_account_days: 30
+
+reconciliation:
+  tolerance_days: 1
+  amount_epsilon_gbp: 0.005
+  break_share: 0.01          # share of payments planted with a break
+  break_mix: {R1: 0.20, R2: 0.25, R3: 0.13, R4: 0.10, R5: 0.10, R6: 0.22}
+  age_buckets: [[0, 1, "0-1 days"], [2, 5, "2-5 days"], [6, 100000, "over 5 days"]]
+
+planted:
+  P1: {date: "2026-03-17", start_hour: 10, end_hour: 12, rails: [card, faster_payments], extra_timeout_prob: 0.30}
+  P2: {rail: card, category: electronics, decline_multiplier: 3.3}
+  P3: {rail: bacs_credit, cutoff_hour: 15, extra_hours: 24}
+  P4: {segment: business, rail: card, from_month: 4, cost_multiplier: 1.35}
+
+analytics:
+  incident_z: 8              # binomial z-score of an hour's technical declines vs the period rate
+  incident_min_events: 10
+  hotspot_ratio: 2.0
+  hotspot_min_volume: 500
+  bimodal_separation: 3.0
+  cost_drift_threshold: 0.10
+  cost_baseline_months: [1, 2, 3]
+
+notes:
+  rails.card.auth_rate: Share of initiated card payments authorised before planted effects are calibrated in
+  risk.false_decline_cost_gbp: Lost margin and goodwill per genuine payment wrongly blocked (assumption)
+  risk.fraud_loss_extra_gbp: Chargeback fee on top of the stolen amount (assumption)
+  risk.review_cost_gbp: Analyst time per manually reviewed payment (assumption)
+  risk.current_threshold: Threshold assumed to be live today, used as the comparison point
+  reconciliation.tolerance_days: Settlement date gap still treated as timing, not a break

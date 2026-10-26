@@ -1,0 +1,21 @@
+# Simplified reason codes. Real scheme codes (ISO 8583 / ISO 20022 / Bacs) are out of scope.
+groups: [insufficient_funds, technical, risk_rule, invalid_details, other]
+
+codes:
+  D51: {group: insufficient_funds, stage: decline, description: Insufficient funds}
+  D05: {group: other, stage: decline, description: Do not honour}
+  D14: {group: invalid_details, stage: decline, description: Invalid card or account number}
+  D54: {group: invalid_details, stage: decline, description: Expired card}
+  D91: {group: technical, stage: decline, description: Issuer or switch unavailable}
+  D68: {group: technical, stage: decline, description: Response timed out}
+  D59: {group: risk_rule, stage: decline, hard: true, description: Suspected fraud (risk score above threshold)}
+  D57: {group: risk_rule, stage: decline, hard: true, description: Blocked by merchant-category rule}
+  F01: {group: technical, stage: failure, description: Rejected by scheme}
+  F02: {group: invalid_details, stage: failure, description: Beneficiary account closed}
+  F03: {group: insufficient_funds, stage: failure, description: Direct debit unpaid, insufficient funds}
+  F09: {group: other, stage: failure, description: Other failure}
+  R01: {group: insufficient_funds, stage: return, description: Refer to payer}
+  R02: {group: invalid_details, stage: return, description: Account closed}
+  R10: {group: other, stage: return, description: Customer claim or indemnity}
+  "4837": {group: risk_rule, stage: dispute, description: No cardholder authorisation (fraud)}
+  "4853": {group: other, stage: dispute, description: Not as described}
